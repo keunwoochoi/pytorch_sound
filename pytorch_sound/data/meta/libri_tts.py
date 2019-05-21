@@ -2,9 +2,11 @@ import pandas as pd
 import os
 import glob
 import re
-from typing import List
+from typing import List, Tuple
 from tqdm import tqdm
 from itertools import repeat
+
+from pytorch_sound.data.dataset import SpeechDataset, SpeechDataLoader
 from pytorch_sound.data.meta import MetaFrame
 from pytorch_sound.data.meta.commons import go_multiprocess, split_train_val_frame
 from pytorch_sound.utils.sound import get_wav_hdr
@@ -44,6 +46,8 @@ def get_wav_duration(file_path: str) -> int:
 
 class LibriTTSMeta(MetaFrame):
 
+    frame_file_names: List[str] = ['all_meta.json', 'train_meta.json', 'val_meta.json']
+
     def __init__(self, meta_path: str = '', min_wav_rate: float = 0.0, max_wav_rate: float = 0.0,
                  min_txt_rate: float = 0.0):
         self.meta_path = meta_path
@@ -55,6 +59,7 @@ class LibriTTSMeta(MetaFrame):
         self.min_wav_rate = min_wav_rate
         self.max_wav_rate = max_wav_rate
         self.min_txt_rate = min_txt_rate
+        self._num_speakers = None
 
     @property
     def columns(self):
@@ -65,12 +70,16 @@ class LibriTTSMeta(MetaFrame):
         return self._meta
 
     @property
-    def frame_file_names(self) -> List[str]:
-        return ['all_meta.json', 'train_meta.json', 'val_meta.json']
-
-    @property
     def sr(self) -> int:
         return 22050
+
+    @property
+    def num_speakers(self):
+        if self._num_speakers is None:
+            speakers = self._meta['speaker'].values
+            set_speakers = set(speakers)
+            self._num_speakers = len(set_speakers)
+        return self._num_speakers
 
     def __len__(self):
         return len(self._meta)
@@ -123,8 +132,9 @@ class LibriTTSMeta(MetaFrame):
             speaker_mult.extend(list(repeat(speaker, len(file_temp))))
 
         print('Update meta infos')
+        speaker_mappings = {spk: idx for idx, spk in enumerate(sorted(speakers))}
         # update infos
-        self._meta['speaker'] = speaker_mult
+        self._meta['speaker'] = [speaker_mappings[idx] for idx in speaker_mult]
         self._meta['audio_filename'] = wav_file_list
         self._meta['pass'] = [True] * len(speaker_mult)
 
@@ -148,6 +158,39 @@ class LibriTTSMeta(MetaFrame):
         # save data frames
         print('Save meta frames on {}'.format(' '.join(self.frame_file_names)))
         self.save_meta(self.meta_path, self._meta, train_meta, val_meta)
+
+
+def get_datasets(meta_dir: str, batch_size: int, num_workers: int,
+                 fix_len: float = 0.0, skip_audio: bool = False) -> Tuple[SpeechDataLoader, SpeechDataLoader]:
+
+    assert os.path.isdir(meta_dir), '{} is not valid directory path!'
+
+    train_file, valid_file = LibriTTSMeta.frame_file_names[1:]
+
+    # load meta file
+    train_meta = LibriTTSMeta(os.path.join(meta_dir, train_file))
+    valid_meta = LibriTTSMeta(os.path.join(meta_dir, valid_file))
+
+    # create dataset
+    train_dataset = SpeechDataset(train_meta, fix_len=fix_len, skip_audio=skip_audio)
+    valid_dataset = SpeechDataset(valid_meta, fix_len=fix_len, skip_audio=skip_audio)
+
+    # create data loader
+    train_loader = SpeechDataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
+    valid_loader = SpeechDataLoader(valid_dataset, batch_size=batch_size, num_workers=num_workers)
+
+    return train_loader, valid_loader
+
+
+def get_speakers(meta_dir: str):
+    assert os.path.isdir(meta_dir), '{} is not valid directory path!'
+
+    train_file = LibriTTSMeta.frame_file_names[1]
+
+    # load meta file
+    train_meta = LibriTTSMeta(os.path.join(meta_dir, train_file))
+
+    return train_meta.num_speakers
 
 
 if __name__ == '__main__':

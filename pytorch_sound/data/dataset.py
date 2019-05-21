@@ -12,7 +12,7 @@ from pytorch_sound.data.meta import MetaFrame, MetaType
 
 class SpeechDataset(Dataset):
 
-    def __init__(self, meta_frame: MetaFrame, fix_len: int = 0, skip_audio: bool = False):
+    def __init__(self, meta_frame: MetaFrame, fix_len: float = 0, skip_audio: bool = False):
         """
         :param meta_frame: Data Frame with dataset info
         :param kwargs: attributes to load data
@@ -51,7 +51,7 @@ class SpeechDataset(Dataset):
         if self.fix_len:
             start_idx = np.random.randint(0, max(1, len(wav) - self.fix_len + 1))
             wav = fix_length(wav[start_idx:], self.fix_len)
-        return [wav]
+        return wav
 
     @staticmethod
     def load_midi(file_path: str) -> List[np.ndarray]:
@@ -62,7 +62,7 @@ class SpeechDataset(Dataset):
         # load midi file
         mid = parse_midi(file_path)
         # TODO: enhance preprocess midi info
-        return [mid.get_piano_roll()]
+        return mid.get_piano_roll()
 
     @staticmethod
     def load_txt(txt: str) -> List[int]:
@@ -74,7 +74,7 @@ class SpeechDataset(Dataset):
 
 class SpeechDataLoader(DataLoader):
 
-    def __init__(self, dataset: SpeechDataset, batch_size: int, num_workers: int, is_bucket: bool):
+    def __init__(self, dataset: SpeechDataset, batch_size: int, num_workers: int, is_bucket: bool = False):
         # call super
         super().__init__(dataset,
                          num_workers=num_workers,

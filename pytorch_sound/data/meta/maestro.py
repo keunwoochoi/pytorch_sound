@@ -70,7 +70,7 @@ class MaestroMeta(MetaFrame):
 
 
 def get_datasets(meta_dir: str, batch_size: int, num_workers: int,
-                 fix_len: float = 0.0, skip_audio: bool = False) -> Tuple[SpeechDataLoader]:
+                 fix_len: float = 0.0, skip_audio: bool = False) -> Tuple[SpeechDataLoader, SpeechDataLoader]:
 
     assert os.path.isdir(meta_dir), '{} is not valid directory path!'
 

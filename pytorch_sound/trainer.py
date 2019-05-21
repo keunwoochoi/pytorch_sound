@@ -32,7 +32,7 @@ class Trainer:
 
     def __init__(self, model: nn.Module, optimizer,
                  train_dataset, valid_dataset,
-                 max_step: int, valid_max_step: int, save_interval: int,
+                 max_step: int, valid_max_step: int, save_interval: int, log_interval: int,
                  save_dir: str, save_prefix: str = '',
                  grad_clip: float = 0.0, grad_norm: float = 0.0,
                  pretrained_path: str = None, sr: int = None):
@@ -60,9 +60,20 @@ class Trainer:
             self.sr = SAMPLE_RATE
         self.max_step = max_step
         self.save_interval = save_interval
+        self.log_interval = log_interval
+        self.save_dir = save_dir
+        self.save_prefix = save_prefix
         self.grad_clip = grad_clip
         self.grad_norm = grad_norm
         self.valid_max_step = valid_max_step
+
+        # make dirs
+        self.log_dir = os.path.join(save_dir, 'logs')
+        self.model_dir = os.path.join(save_dir, 'models')
+        os.makedirs(self.log_dir, exist_ok=True)
+        os.makedirs(self.model_dir, exist_ok=True)
+
+        self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
 
         # load previous checkpoint
         # set seed
@@ -76,29 +87,18 @@ class Trainer:
             torch.cuda.manual_seed(self.seed)
 
         # load pretrained model
-        if self.step == 0 and pretrained_path is not None:
+        if self.step == 0 and pretrained_path:
             self.load_pretrained_model()
-
-        # tensorboard logging path
-        self.save_dir = save_dir
-        self.save_prefix = save_prefix
-
-        # make dirs
-        self.log_dir = os.path.join(save_dir, 'logs')
-        self.model_dir = os.path.join(save_dir, 'models')
-        os.makedirs(self.log_dir, exist_ok=True)
-        os.makedirs(self.model_dir, exist_ok=True)
-
-        self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
 
         # valid loss
         self.best_valid_loss = float(1e+5)
         self.save_valid_loss = float(1e+5)
 
     @abc.abstractmethod
-    def forward(self, *inputs) -> Tuple[torch.Tensor, Dict]:
+    def forward(self, *inputs, is_logging: bool = False) -> Tuple[torch.Tensor, Dict]:
         """
         :param inputs: Loaded Data Points from Speech Loader
+        :param is_logging: log or not
         :return: Loss Tensor, Log Dictionary
         """
         raise NotImplemented
@@ -112,7 +112,7 @@ class Trainer:
                 self.step = i
 
                 # logging
-                if i % self.save_interval:
+                if i % self.save_interval == 0:
                     tprint('------------- TRAIN step : %d -------------' % i)
 
                 # do training step
